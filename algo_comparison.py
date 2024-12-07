@@ -26,34 +26,34 @@ def load_arff_dataset(filepath):
 
 # Train-test split
 def split_data(data):
-    # זיהוי עמודת התיוג
+    # tag column
     label_column = 'outlier'
 
-    # בדיקה אם עמודת התיוג קיימת
+    # check if tag column exist
     if label_column not in data.columns:
         raise ValueError(f"Label column '{label_column}' not found in dataset.")
 
-    # התעלמות מעמודת ה-'id' אם קיימת
+    # ignore id column
     feature_columns = data.columns.drop([label_column, 'id'], errors='ignore')
 
-    # עיבוד עמודת התיוג
+    # proccess tags
     if data[label_column].dtype == 'object' or data[label_column].dtype.name == 'bytes':
-        # המרה ל-1/0 עבור ערכים כמו 'yes'/'no'
+
         data[label_column] = data[label_column].apply(lambda x: 1 if x in [b"yes", "yes", 'yes', b'y', 'y'] else 0)
     elif data[label_column].dtype in ['int64', 'float64']:
-        # אם העמודה כבר מספרית, נוודא שהיא בינארית
+
         unique_labels = data[label_column].unique()
         if len(unique_labels) > 2:
             print(f"Warning: Label column '{label_column}' has more than two unique values.")
     else:
-        # המרה לערכים מספריים אם העמודה מסוג אחר
+        # make sure its numeric
         data[label_column] = data[label_column].astype(int)
 
-    # הפרדת התכונות והתוויות
-    X = data[feature_columns].values  # תכונות
-    y = data[label_column].values  # תוויות
+    # data and tags seperation
+    X = data[feature_columns].values
+    y = data[label_column].values
 
-    # חלוקה ל-Train/Test
+    #Train/Test
     return train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Stopping criteria
