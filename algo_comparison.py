@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 from skopt import BayesSearchCV
 from scipy.spatial import ConvexHull
 from scipy.io import arff  # for handling .arff files
-from ConvexHullAnomalyDetectorClass import ConvexHullAnomalyDetector
+from ConvexHullAnomalyDetectorClass import *
 
 # Function to load .arff datasets
 from scipy.io import arff
@@ -123,7 +123,7 @@ if __name__ == "__main__":
                         # "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
                         # "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
                         # "K-Means": KMeans(n_clusters=2, random_state=42),
-                        "Convex Hull": ConvexHullAnomalyDetector(lam=1.0)  # Your custom algorithm
+                        "Convex Hull": PcaConvexHullAnomalyDetector()  # Your custom algorithm
                     }
 
                     # Evaluate models on the current dataset
@@ -132,6 +132,13 @@ if __name__ == "__main__":
                             print()
                         try:
                             algo.fit(X_train)
+
+                            # Compute fit accuracy
+                            algo.compute_fit_accuracy(X_train, y_train)
+
+                            algo.plot_pca_with_hull(X_train, y_train)
+
+
                             y_pred = algo.predict(X_test)
                             y_pred = np.where(y_pred == 1, 0, 1)  # Adjust predictions for anomaly detection
 
