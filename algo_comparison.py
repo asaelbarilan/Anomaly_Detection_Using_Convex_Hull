@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
+from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score,balanced_accuracy_score
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.svm import OneClassSVM
@@ -88,15 +88,151 @@ def optimize_hyperparameters(model, param_grid, X_train, y_train):
     opt.fit(X_train, y_train)
     return opt.best_estimator_
 
-# Main function
-if __name__ == "__main__":
-    # Path to the parent directory containing folders of datasets
-    parent_folder = "datasets"
+# # Main function
+# if __name__ == "__main__":
+#     # Path to the parent directory containing folders of datasets
+#     parent_folder = "datasets"
+#
+#     # Placeholder for results
+#     results = []
+#
+#     # Iterate through all folders and subfolders
+#     for folder in os.listdir(parent_folder):
+#         folder_path = os.path.join(parent_folder, folder)
+#         if os.path.isdir(folder_path):
+#             print(f"Processing folder: {folder}")
+#
+#             for file in os.listdir(folder_path):
+#                 if file.endswith('.arff'):
+#                     file_path = os.path.join(folder_path, file)
+#                     print(f"Processing file: {file_path}")
+#
+#                     # Load dataset
+#                     data = load_arff_dataset(file_path)
+#                     try:
+#                         X_train, X_test, y_train, y_test = split_data(data)
+#                     except Exception as e:
+#                         print(f"Error processing {file_path}: {e}")
+#                         continue
+#
+#                     num_zeros = np.sum(y_test == 0)  # Count 0s
+#                     num_ones = np.sum(y_test == 1)  # Count 1s
+#
+#                     print(f"Number of 0s: {num_zeros}")
+#                     print(f"Number of 1s: {num_ones}")
+#
+#                     # Define models, including the custom Convex Hull algorithm
+#                     models = {
+#                         # "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
+#                         # "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
+#                         # "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
+#                         # "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
+#                         # "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
+#                         # "K-Means": KMeans(n_clusters=2, random_state=42),
+#                         "Convex Hull": PcaConvexHullAnomalyDetector()  # Your custom algorithm
+#                     }
+#
+#                     # Evaluate models on the current dataset
+#                     for algo_name, algo in models.items():
+#                         if algo_name=="Convex Hull":
+#                             print()
+#                         try:
+#                             algo.fit(X_train)
+#
+#                             # Compute fit accuracy
+#                             algo.compute_fit_accuracy(X_train, y_train)
+#
+#                             #algo.plot_pca_with_hull(X_train, y_train)
+#
+#
+#                             y_pred = algo.predict(X_test)
+#                             y_pred = np.where(y_pred == 1, 0, 1)  # Adjust predictions for anomaly detection
+#
+#                             # Calculate metrics
+#                             metrics = {
+#                                 "Accuracy": accuracy_score(y_test, y_pred),
+#                                 "F1 Score": f1_score(y_test, y_pred),
+#                                 "Recall": recall_score(y_test, y_pred),
+#                                 "Precision": precision_score(y_test, y_pred)
+#                             }
+#
+#                             # Append results
+#                             results.append({
+#                                 "Dataset": file_path,
+#                                 "Algorithm": algo_name,
+#                                 **metrics
+#                             })
+#
+#                         except Exception as e:
+#                             print(f"Error with {algo_name} on {file_path}: {e}")
+#                             continue
+#         print('')
+#     # Convert results to a DataFrame
+#     results_df = pd.DataFrame(results)
+#
+#     # Save results to CSV
+#     results_df.to_csv("results_table.csv", index=False)
+#     print("Results saved to results_table.csv")
 
-    # Placeholder for results
+
+def evaluate_models_on_dataset(models, X_train, y_train, X_test, y_test,file_path):
+    """
+    Evaluate all models on the given train and test data.
+    """
     results = []
 
-    # Iterate through all folders and subfolders
+    for algo_name, algo in models.items():
+        try:
+            print(f'running {algo_name} on {file_path}')
+            # Train the model
+            algo.fit(X_train)
+
+            # Train set predictions
+            y_train_pred = algo.predict(X_train)
+            y_train_pred = np.where(y_train_pred == 1, 0, 1)  # Adjust for anomaly detection
+
+            # Test set predictions
+            y_test_pred = algo.predict(X_test)
+            y_test_pred = np.where(y_test_pred == 1, 0, 1)  # Adjust for anomaly detection
+
+            # Metrics for train
+            train_metrics = {
+                "Algorithm": algo_name,
+                "Dataset": "Train",
+                "Accuracy": accuracy_score(y_train, y_train_pred),
+                "Balanced Accuracy": balanced_accuracy_score(y_train, y_train_pred),
+                "F1 Score": f1_score(y_train, y_train_pred),
+                "Recall": recall_score(y_train, y_train_pred),
+                "Precision": precision_score(y_train, y_train_pred)
+            }
+
+            # Metrics for test
+            test_metrics = {
+                "Algorithm": algo_name,
+                "Dataset": "Test",
+                "Accuracy": accuracy_score(y_test, y_test_pred),
+                "Balanced Accuracy": balanced_accuracy_score(y_test, y_test_pred),
+                "F1 Score": f1_score(y_test, y_test_pred),
+                "Recall": recall_score(y_test, y_test_pred),
+                "Precision": precision_score(y_test, y_test_pred)
+            }
+
+            results.append(train_metrics)
+            results.append(test_metrics)
+
+        except Exception as e:
+            print(f"Error with {algo_name}: {e}")
+            continue
+
+    return results
+
+
+def process_datasets(parent_folder):
+    """
+    Process all datasets in the given parent folder and evaluate models.
+    """
+    all_results = []
+
     for folder in os.listdir(parent_folder):
         folder_path = os.path.join(parent_folder, folder)
         if os.path.isdir(folder_path):
@@ -107,64 +243,58 @@ if __name__ == "__main__":
                     file_path = os.path.join(folder_path, file)
                     print(f"Processing file: {file_path}")
 
-                    # Load dataset
-                    data = load_arff_dataset(file_path)
                     try:
+                        # Load and split dataset
+                        data = load_arff_dataset(file_path)
                         X_train, X_test, y_train, y_test = split_data(data)
+
+                        # Define models
+                        models = {
+                            #"Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
+                            #"Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
+                            "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
+                            #"Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
+                            #"DBSCAN": DBSCAN(eps=0.5, min_samples=5),
+                            "K-Means": KMeans(n_clusters=2, random_state=42),
+                            # "Convex Hull": ParallelConvexHullAnomalyDetector()  # Your custom algorithm
+                        }
+
+                        # Evaluate  models
+                        results = evaluate_models_on_dataset(models, X_train, y_train, X_test, y_test,file_path)
+                        all_results.extend(results)
+
                     except Exception as e:
                         print(f"Error processing {file_path}: {e}")
                         continue
-
-                    # Define models, including the custom Convex Hull algorithm
-                    models = {
-                        # "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
-                        # "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
-                        # "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
-                        # "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
-                        # "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
-                        # "K-Means": KMeans(n_clusters=2, random_state=42),
-                        "Convex Hull": PcaConvexHullAnomalyDetector()  # Your custom algorithm
-                    }
-
-                    # Evaluate models on the current dataset
-                    for algo_name, algo in models.items():
-                        if algo_name=="Convex Hull":
-                            print()
-                        try:
-                            algo.fit(X_train)
-
-                            # Compute fit accuracy
-                            algo.compute_fit_accuracy(X_train, y_train)
-
-                            algo.plot_pca_with_hull(X_train, y_train)
+    return all_results
 
 
-                            y_pred = algo.predict(X_test)
-                            y_pred = np.where(y_pred == 1, 0, 1)  # Adjust predictions for anomaly detection
+def aggregate_results(results_df):
+    """
+    Aggregate results across all datasets to compute averages.
+    """
+    avg_results = results_df.groupby(["Algorithm", "Dataset"]).mean().reset_index()
+    return avg_results
 
-                            # Calculate metrics
-                            metrics = {
-                                "Accuracy": accuracy_score(y_test, y_pred),
-                                "F1 Score": f1_score(y_test, y_pred),
-                                "Recall": recall_score(y_test, y_pred),
-                                "Precision": precision_score(y_test, y_pred)
-                            }
 
-                            # Append results
-                            results.append({
-                                "Dataset": file_path,
-                                "Algorithm": algo_name,
-                                **metrics
-                            })
+if __name__ == "__main__":
+    parent_folder = "datasets"
 
-                        except Exception as e:
-                            print(f"Error with {algo_name} on {file_path}: {e}")
-                            continue
-        print('')
-    # Convert results to a DataFrame
+    # Process all datasets and evaluate models
+    results = process_datasets(parent_folder)
+
+    # Convert results to DataFrame
     results_df = pd.DataFrame(results)
 
-    # Save results to CSV
-    results_df.to_csv("results_table.csv", index=False)
-    print("Results saved to results_table.csv")
+    # Save per-dataset results
+    results_df.to_csv("results_per_dataset.csv", index=False)
+    print("Results saved to results_per_dataset.csv")
 
+    # Compute averages
+    avg_results = aggregate_results(results_df)
+    avg_results.to_csv("average_results.csv", index=False)
+    print("Average results saved to average_results.csv")
+
+    # Print average results for review
+    print("Average Results:")
+    print(avg_results)

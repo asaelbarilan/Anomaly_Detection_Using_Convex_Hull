@@ -16,13 +16,269 @@ import numpy as np
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 import numpy as np
-
+from sklearn.base import BaseEstimator, OutlierMixin
+from sklearn.decomposition import PCA
+from scipy.spatial import ConvexHull
+import matplotlib.pyplot as plt
+from joblib import Parallel, delayed
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import accuracy_score, classification_report
+
+
+
+class ParallelConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
+    def __init__(self, lam=1.0, tol=1e-3, max_iter=100, n_components=2, n_jobs=-1):
+        """
+        Parameters:
+        - lam: Regularization parameter for balancing size vs. volume.
+        - tol: Tolerance for stopping criteria.
+        - max_iter: Maximum iterations.
+        - n_components: Number of PCA components for visualization.
+        - n_jobs: Number of jobs for parallel processing (-1 for all cores).
+        """
+        self.lam = lam
+        self.tol = tol
+        self.max_iter = max_iter
+        self.n_components = n_components
+        self.Sp = None  # Optimal subset
+        self.pca = None  # PCA object
+        self.n_jobs = n_jobs
+
+
+    def fit(self, X):
+        """
+        Fit the model by reducing dimensions with PCA and finding the convex hull.
+        """
+        # Step 1: Reduce dimensions with PCA
+        self.pca = PCA(n_components=self.n_components)
+        X_reduced = self.pca.fit_transform(X)
+        S = set(map(tuple, X_reduced))
+        Sp = S.copy()
+        r = set()  # Removed points
+
+        for _ in range(self.max_iter):
+            Sp_array = np.array(list(Sp))
+            if len(Sp_array) < self.n_components + 1:
+                # Not enough points to form a hull
+                break
+
+            # Compute the current hull
+            try:
+                Sh = ConvexHull(Sp_array)
+                vol_c = Sh.volume
+            except Exception:
+                # If hull fails to compute, stop
+                break
+
+            vol_m = vol_c
+            S_new_h = Sp
+            r_n = set()
+
+            # Parallel computation function
+            def compute_new_volume(Sp, p_tuple):
+                """Remove p_tuple from Sp, compute new hull volume."""
+                Sp_new = Sp - {p_tuple}
+                # Need at least (n_components+1) points to form a hull
+                if len(Sp_new) < self.n_components + 1:
+                    return p_tuple, np.inf
+                try:
+                    Sh_new = ConvexHull(np.array(list(Sp_new)))
+                    vol_n = Sh_new.volume
+                except Exception:
+                    vol_n = np.inf
+                return p_tuple, vol_n
+
+            # Sub-loop: Remove one point at a time in parallel
+            candidates = Sh.points[Sh.vertices]
+            results = Parallel(n_jobs=self.n_jobs)(
+                delayed(compute_new_volume)(Sp, tuple(p)) for p in candidates
+            )
+
+            # Decide which points to remove after all parallel computations
+            for p_tuple, vol_n in results:
+                if vol_n < vol_m - self.tol:
+                    # Update if this candidate leads to a smaller hull volume
+                    if vol_n < vol_m:
+                        vol_m = vol_n
+                        S_new_h = Sp - {p_tuple}
+                    r_n.add(p_tuple)
+
+            # Update CH and removed points
+            Sp = S_new_h
+            r.update(r_n)
+
+            # Stopping criteria
+            if len(r_n) == 0:
+                break
+
+        self.Sp = Sp
+        Sp_array = np.array(list(self.Sp))
+
+        # After determining the final Sp, try to compute the final hull equations.
+        if len(Sp_array) >= self.n_components + 1:
+            # Compute hull on the final set of points
+            final_hull = ConvexHull(Sp_array)
+            self.hull_equations_ = final_hull.equations
+        else:
+            # Not enough points to form a hull
+            self.hull_equations_ = None
+
+        return self
+
+    def predict(self, X):
+        """
+        Predict whether points are inside the fitted convex hull or not.
+
+        Instead of adding each point and attempting to build a hull again,
+        we leverage the final hull equations. A point is inside if it satisfies
+        all half-space inequalities defined by the hull facets.
+        """
+        X_reduced = self.pca.transform(X)
+        predictions = []
+
+        # If we don't have a valid hull, treat all points as inside
+        # or as anomalies depending on preference.
+        if self.hull_equations_ is None:
+            # If no hull could be formed, perhaps all points are considered normal
+            # or consider them all anomalies. Here we choose all normal:
+            return np.ones(X_reduced.shape[0], dtype=int)
+
+        A = self.hull_equations_[:, :-1]
+        b = self.hull_equations_[:, -1]
+
+        # Check if each point satisfies A*x + b <= 0 for all facets
+        # We'll add a small numerical tolerance to account for floating-point errors
+        tol = 1e-12
+
+        for x in X_reduced:
+            if np.all(A.dot(x) + b <= tol):
+                predictions.append(1)  # Inside (normal)
+            else:
+                predictions.append(-1)  # Outside (anomalous)
+
+        return np.array(predictions)
+
+    def plot_pca_with_hull(self, X, y=None):
+        """
+        Visualize the PCA-reduced data with the convex hull and anomalies.
+
+        Parameters:
+        - X: Original input data.
+        - y: Optional ground-truth labels (1 for normal, -1 for anomalies).
+        """
+        X_reduced = self.pca.transform(X)
+        Sp_array = np.array(list(self.Sp))
+
+        if len(Sp_array) < 3:
+            # If we don't have enough points for a hull, just plot points
+            plt.scatter(X_reduced[:, 0], X_reduced[:, 1], c='gray', label='All Points')
+            plt.title("PCA-Reduced Data")
+            plt.xlabel("Principal Component 1")
+            plt.ylabel("Principal Component 2")
+            if y is not None:
+                plt.scatter(X_reduced[y == -1][:, 0], X_reduced[y == -1][:, 1],
+                            c='red', label='Ground-Truth Anomalies', edgecolor='k')
+            plt.legend()
+            plt.show()
+            return
+
+        # Compute Convex Hull
+        hull = ConvexHull(Sp_array)
+
+        plt.figure(figsize=(10, 7))
+        plt.scatter(X_reduced[:, 0], X_reduced[:, 1], c='gray', label='All Points')
+        plt.scatter(Sp_array[:, 0], Sp_array[:, 1], c='green', label='Inside Hull')
+
+        # Highlight hull edges
+        for simplex in hull.simplices:
+            plt.plot(Sp_array[simplex, 0], Sp_array[simplex, 1], 'r-')
+
+        if y is not None:
+            plt.scatter(X_reduced[y == -1][:, 0], X_reduced[y == -1][:, 1],
+                        c='red', label='Ground-Truth Anomalies', edgecolor='k')
+
+        plt.title("PCA-Reduced Data with Convex Hull")
+        plt.xlabel("Principal Component 1")
+        plt.ylabel("Principal Component 2")
+        plt.legend()
+        plt.show()
+
+
+# def fit(self, X):
+    #     """
+    #     Fit the model by reducing dimensions with PCA and finding the convex hull.
+    #     """
+    #     # Step 1: Reduce dimensions with PCA
+    #     self.pca = PCA(n_components=self.n_components)
+    #     X_reduced = self.pca.fit_transform(X)
+    #     S = set(map(tuple, X_reduced))
+    #     Sp = S.copy()
+    #     r = set()  # Removed points
+    #
+    #     for _ in range(self.max_iter):
+    #         Sp_array = np.array(list(Sp))
+    #         if len(Sp_array) < self.n_components + 1:
+    #             # Not enough points to form a hull
+    #             break
+    #
+    #         # Compute the current hull
+    #         try:
+    #             Sh = ConvexHull(Sp_array)
+    #             vol_c = Sh.volume
+    #         except Exception:
+    #             # If hull fails to compute, stop
+    #             break
+    #
+    #         vol_m = vol_c
+    #         S_new_h = Sp
+    #         r_n = set()
+    #
+    #         # Parallel computation function
+    #         def compute_new_volume(Sp, p_tuple):
+    #             """Remove p_tuple from Sp, compute new hull volume."""
+    #             Sp_new = Sp - {p_tuple}
+    #             # Need at least (n_components+1) points to form a hull
+    #             if len(Sp_new) < self.n_components + 1:
+    #                 return p_tuple, np.inf
+    #             try:
+    #                 Sh_new = ConvexHull(np.array(list(Sp_new)))
+    #                 vol_n = Sh_new.volume
+    #             except Exception:
+    #                 vol_n = np.inf
+    #             return p_tuple, vol_n
+    #
+    #         # Sub-loop: Remove one point at a time in parallel
+    #         candidates = Sh.points[Sh.vertices]
+    #         results = Parallel(n_jobs=self.n_jobs)(
+    #             delayed(compute_new_volume)(Sp, tuple(p)) for p in candidates
+    #         )
+    #
+    #         # Decide which points to remove after all parallel computations
+    #         for p_tuple, vol_n in results:
+    #             if vol_n < vol_m - self.tol:
+    #                 # Update if this candidate leads to a smaller hull volume
+    #                 if vol_n < vol_m:
+    #                     vol_m = vol_n
+    #                     S_new_h = Sp - {p_tuple}
+    #                 r_n.add(p_tuple)
+    #
+    #         # Update CH and removed points
+    #         Sp = S_new_h
+    #         r.update(r_n)
+    #
+    #         # Stopping criteria
+    #         if len(r_n) == 0:
+    #             break
+    #
+    #     self.Sp = Sp
+    #     return self
+
+
+
 
 class PcaConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
     def __init__(self, lam=1.0, tol=1e-3, max_iter=100, n_components=2):
@@ -140,9 +396,11 @@ class PcaConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
 
     from sklearn.metrics import accuracy_score, classification_report
 
+    from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+
     def compute_fit_accuracy(self, X, y):
         """
-        Compute accuracy of the fit using ground-truth labels.
+        Compute accuracy of the fit using ground-truth labels and analyze anomalies.
 
         Parameters:
         - X: Original input data.
@@ -160,9 +418,21 @@ class PcaConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
         accuracy = accuracy_score(y, y_pred)
         print(f"Fit Accuracy: {accuracy:.4f}")
 
-        # Optional: Detailed classification report
+        # Detailed classification report
         print("Classification Report:")
         print(classification_report(y, y_pred, target_names=["Normal (0)", "Anomaly (1)"]))
+
+        # Analyze anomalies
+        total_anomalies = np.sum(y == 1)
+        detected_anomalies = np.sum(y_pred == 1)
+        true_positives = np.sum((y == 1) & (y_pred == 1))  # Correctly identified anomalies
+
+        print(f"\nAnomaly Analysis:")
+        print(f"Total anomalies in ground-truth: {total_anomalies}")
+        print(f"Anomalies detected by the model: {detected_anomalies}")
+        print(f"True positives (correctly identified anomalies): {true_positives}")
+        print(f"Missed anomalies: {total_anomalies - true_positives}")
+        print(f"False positives (normal misclassified as anomalies): {detected_anomalies - true_positives}")
 
         return accuracy
 
