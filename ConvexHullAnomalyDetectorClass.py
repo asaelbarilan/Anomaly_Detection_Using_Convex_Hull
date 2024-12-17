@@ -29,6 +29,134 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import accuracy_score, classification_report
 
 
+import numpy as np
+from sklearn.base import BaseEstimator, OutlierMixin
+from sklearn.decomposition import PCA
+from scipy.spatial import ConvexHull
+from joblib import Parallel, delayed
+
+class ParallelCHoutsideConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
+    """
+    PcaConvexHullAnomalyDetector:
+    - Applies PCA to reduce data before computing Convex Hull.
+    - Iteratively removes points that minimize or maintain hull volume (single best point per iteration).
+    - Stops when no improvement in one iteration or max_iter reached.
+    - Uses parallelization to speed up candidate checks.
+    - Uses precomputed hull equations to speed up predict.
+
+    Changes from original:
+    - Added PCA for dimensionality reduction.
+    - Parallelized candidate removal checks with joblib.
+    - Removed tolerance checks and rely on no improvement + max_iter stopping.
+    - Stores hull equations to avoid recomputing hull in predict.
+    """
+
+    def __init__(self, lam=1.0, tol=1e-3, max_iter=100, n_components=2, n_jobs=-1):
+        self.lam = lam
+        self.tol = tol
+        self.max_iter = max_iter
+        self.n_components = n_components
+        self.n_jobs = n_jobs
+        self.Sp = None
+        self.pca = None
+        self.hull_equations_ = None
+
+    def fit(self, X):
+        # Reduce dimensions with PCA
+        self.pca = PCA(n_components=self.n_components)
+        X_reduced = self.pca.fit_transform(X)
+        S = set(map(tuple, X_reduced))
+        Sp = S.copy()
+        r = set()
+
+        # If not enough points for initial hull
+        if len(Sp) < self.n_components + 1:
+            self.Sp = Sp
+            self.hull_equations_ = None
+            return self
+
+        Sp_array = np.array(list(Sp))
+        try:
+            Sh = ConvexHull(Sp_array)
+            vol_m = Sh.volume
+        except Exception:
+            self.Sp = Sp
+            self.hull_equations_ = None
+            return self
+
+        def compute_new_volume(Sp, p_tuple):
+            Sp_new = Sp - {p_tuple}
+            if len(Sp_new) < self.n_components + 1:
+                return p_tuple, float('inf')
+            try:
+                Sh_new = ConvexHull(np.array(list(Sp_new)))
+                vol_n = Sh_new.volume
+            except Exception:
+                vol_n = float('inf')
+            return p_tuple, vol_n,Sh_new
+
+        for _ in range(self.max_iter):
+            candidates = Sh.points[Sh.vertices]
+            results = Parallel(n_jobs=self.n_jobs)(
+                delayed(compute_new_volume)(Sp, tuple(p)) for p in candidates
+            )
+
+            best_vol = vol_m
+            best_point = None
+            best_ch=None
+            for p_tuple, vol_n,ch_new in results:
+                if vol_n <= best_vol:
+                    best_vol = vol_n
+                    best_point = p_tuple
+                    best_ch=ch_new
+
+            if best_point is not None and best_vol <= vol_m:
+                # Remove the best point found this iteration
+                Sp = Sp - {best_point}
+                r.add(best_point)
+                vol_m = best_vol
+
+                if len(Sp) < self.n_components + 1:
+                    break
+                try:
+                    Sh = best_ch #ConvexHull(np.array(list(Sp)))
+                except Exception:
+                    break
+            else:
+                # No improvement found, stop
+                break
+
+        self.Sp = Sp
+        Sp_array = np.array(list(self.Sp))
+        if len(Sp_array) >= self.n_components + 1:
+            try:
+                final_hull = ConvexHull(Sp_array)
+                self.hull_equations_ = final_hull.equations
+            except Exception:
+                self.hull_equations_ = None
+        else:
+            self.hull_equations_ = None
+
+        return self
+
+    def predict(self, X):
+        X_reduced = self.pca.transform(X)
+        if self.hull_equations_ is None:
+            # No hull, consider all points inside
+            return np.ones(X_reduced.shape[0], dtype=int)
+
+        A = self.hull_equations_[:, :-1]
+        b = self.hull_equations_[:, -1]
+
+        predictions = []
+        for x in X_reduced:
+            if np.all(A.dot(x) + b <= 1e-12):
+                predictions.append(1)  # Inside
+            else:
+                predictions.append(-1) # Outside
+        return np.array(predictions)
+
+
 
 class ParallelConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
     def __init__(self, lam=1.0, tol=1e-3, max_iter=100, n_components=2, n_jobs=-1):

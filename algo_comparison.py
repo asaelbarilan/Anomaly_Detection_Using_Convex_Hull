@@ -3,11 +3,15 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score,balanced_accuracy_score
+
+# Define models
 from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import LocalOutlierFactor
 from sklearn.svm import OneClassSVM
-from sklearn.cluster import DBSCAN, KMeans
+from sklearn.neighbors import LocalOutlierFactor, KNeighborsClassifier
+from sklearn.cluster import KMeans, DBSCAN, MeanShift, SpectralClustering
 from sklearn.mixture import GaussianMixture
+
+
 from sklearn.decomposition import PCA
 from skopt import BayesSearchCV
 from scipy.spatial import ConvexHull
@@ -248,16 +252,22 @@ def process_datasets(parent_folder):
                         data = load_arff_dataset(file_path)
                         X_train, X_test, y_train, y_test = split_data(data)
 
-                        # Define models
+
+
+
+                        # Models dictionary
                         models = {
-                            #"Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
-                            #"Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
+                            "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
                             "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
-                            #"Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
-                            #"DBSCAN": DBSCAN(eps=0.5, min_samples=5),
-                            "K-Means": KMeans(n_clusters=2, random_state=42),
-                            # "Convex Hull": ParallelConvexHullAnomalyDetector()  # Your custom algorithm
-                        }
+                            "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
+                            "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
+                            "K-Nearest Neighbors": KNeighborsClassifier(n_neighbors=5),
+                            "Spectral Clustering": SpectralClustering(n_clusters=2, random_state=42),
+                            "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
+                            "K-means": KMeans(n_clusters=2, random_state=42),
+                            "Mean Shift": MeanShift(),
+                            "Parallel Convex Hull": ParallelCHoutsideConvexHullAnomalyDetector(),
+                         }
 
                         # Evaluate  models
                         results = evaluate_models_on_dataset(models, X_train, y_train, X_test, y_test,file_path)
