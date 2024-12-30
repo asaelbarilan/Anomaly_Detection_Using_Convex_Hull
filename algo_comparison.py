@@ -236,8 +236,11 @@ def process_datasets(parent_folder):
     Process all datasets in the given parent folder and evaluate models.
     """
     all_results = []
-
+    break_at=3
+    count=0
     for folder in os.listdir(parent_folder):
+        if count==break_at:
+            break
         folder_path = os.path.join(parent_folder, folder)
         if os.path.isdir(folder_path):
             print(f"Processing folder: {folder}")
@@ -252,22 +255,14 @@ def process_datasets(parent_folder):
                         data = load_arff_dataset(file_path)
                         X_train, X_test, y_train, y_test = split_data(data)
 
-
-
-
                         # Models dictionary
                         models = {
                             "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
                             "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
-                            "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
-                            "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
-                            "K-Nearest Neighbors": KNeighborsClassifier(n_neighbors=5),
-                            "Spectral Clustering": SpectralClustering(n_clusters=2, random_state=42),
-                            "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
-                            "K-means": KMeans(n_clusters=2, random_state=42),
-                            "Mean Shift": MeanShift(),
-                            "Parallel Convex Hull": ParallelCHoutsideConvexHullAnomalyDetector(),
-                         }
+                            # "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
+                            # "K-means": KMeans(n_clusters=2, random_state=42),
+                            # "Parallel Convex Hull": ParallelCHoutsideConvexHullAnomalyDetector(),
+                        }
 
                         # Evaluate  models
                         results = evaluate_models_on_dataset(models, X_train, y_train, X_test, y_test,file_path)
@@ -308,3 +303,29 @@ if __name__ == "__main__":
     # Print average results for review
     print("Average Results:")
     print(avg_results)
+#
+# if __name__ == "__main__":
+#     from google.colab import drive
+#
+#     drive.mount('/content/drive')
+#
+#     parent_folder = "/content/drive/MyDrive/datasets"  # Adjust to your folder
+#
+#     # Process all datasets and evaluate models
+#     results = process_datasets(parent_folder)
+#
+#     # Convert results to DataFrame
+#     results_df = pd.DataFrame(results)
+#
+#     # Save per-dataset results
+#     results_df.to_csv("/content/drive/MyDrive/results_per_dataset.csv", index=False)
+#     print("Results saved to /content/drive/MyDrive/results_per_dataset.csv")
+#
+#     # Compute averages
+#     avg_results = aggregate_results(results_df)
+#     avg_results.to_csv("/content/drive/MyDrive/average_results.csv", index=False)
+#     print("Average results saved to /content/drive/MyDrive/average_results.csv")
+#
+#     # Print average results for review
+#     print("Average Results:")
+#     print(avg_results)
