@@ -10,12 +10,19 @@ from sklearn.neighbors import LocalOutlierFactor, KNeighborsClassifier
 from sklearn.cluster import KMeans, DBSCAN, MeanShift, SpectralClustering
 from sklearn.mixture import GaussianMixture
 from scipy.io import arff  # for handling .arff files
+from ConvexHullAnomalyDetectorClass import ParallelCHoutsideConvexHullAnomalyDetector
+import logging
 
 # For convex hull anomaly detection (replace with your custom class import if needed)
 
 # Dimensionality reduction
 from sklearn.decomposition import PCA
-
+logging.basicConfig(
+    filename="/home/convexhull1/process_log.txt",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logging.info("Script started")
 
 # Function to load .arff datasets
 def load_arff_dataset(filepath):
@@ -65,6 +72,7 @@ def evaluate_models(X, y_true, models, dataset_name):
             # Collect metrics only if ground truth labels are available
             if y_true is not None and len(y_true) > 0:
                 accuracy = accuracy_score(y_true, y_pred)
+                balanced_accuracy = balanced_accuracy(y_true, y_pred)
                 precision = precision_score(y_true, y_pred)
                 recall = recall_score(y_true, y_pred)
                 f1 = f1_score(y_true, y_pred)
@@ -76,6 +84,7 @@ def evaluate_models(X, y_true, models, dataset_name):
                 "Algorithm": model_name,
                 "Dataset": dataset_name,
                 "Accuracy": accuracy,
+                "BalancedAccuracy": balanced_accuracy,
                 "Precision": precision,
                 "Recall": recall,
                 "F1 Score": f1
@@ -84,6 +93,7 @@ def evaluate_models(X, y_true, models, dataset_name):
 
         except Exception as e:
             print(f"Error with {model_name}: {e}")
+            logging.error(f"Error with {model_name}: {e}")
             continue
 
     return results
@@ -94,25 +104,36 @@ def save_intermediate_results(results, file_path):
     results_df = pd.DataFrame(results)
     if os.path.exists(file_path):
         results_df.to_csv(file_path, mode='a', header=False, index=False)
+        print('file exist saved intermediate results to file')
     else:
         results_df.to_csv(file_path, index=False)
+        print('saved intermediate results to file')
+
+def get_processed_files(results_file_path):
+    if os.path.exists(results_file_path):
+        results_df = pd.read_csv(results_file_path)
+        return results_df["Dataset"].unique()
+    return []
+
 
 
 # Process datasets
 def process_datasets(parent_folder, results_file_path):
-    """
-    Process all datasets in the given parent folder and evaluate models.
-    """
+    processed_files = get_processed_files(results_file_path)
     all_results = []
 
     for folder_name in os.listdir(parent_folder):
         folder_path = os.path.join(parent_folder, folder_name)
         if os.path.isdir(folder_path):
-            print(f"Processing folder: {folder_name}")
+            count = 0
             for file in os.listdir(folder_path):
-                if file.endswith('.arff'):
+                if count >= 2:  # Process only 2 files
+                    break
+                if file.endswith('.arff') and file not in processed_files:
                     file_path = os.path.join(folder_path, file)
                     print(f"Processing file: {file_path}")
+                    # Processing code...
+                    count += 1
                     try:
                         # Load dataset
                         data = load_arff_dataset(file_path)
@@ -158,23 +179,27 @@ def aggregate_results(results_file_path, output_file_path):
 
 if __name__ == "__main__":
 
-    import os
+    try :
 
 
-    datasets_folder = "/home/username/ch-data/literature"  # Update with your VM path
-    results_file_path = "/home/username/results_per_dataset.csv"
-    avg_results_file_path = "/home/username/average_results.csv"
 
-    # Process datasets and save intermediate results
-    print(f"Processing datasets in: {datasets_folder}")
-    process_datasets(datasets_folder, results_file_path)
+        datasets_folder = datasets_folder = "/home/convexhull1/literature"  # Update with your VM path
+        results_file_path = "/home/convexhull1/results_per_dataset.csv"
+        avg_results_file_path = "/home/convexhull1/average_results.csv"
 
-    # Aggregate and save final results
-    aggregate_results(results_file_path, avg_results_file_path)
+        # Process datasets and save intermediate results
+        print(f"Processing datasets in: {datasets_folder}")
+        process_datasets(datasets_folder, results_file_path)
 
-    print("Processing complete! Check the results in your specified paths.")
+        # Aggregate and save final results
+        aggregate_results(results_file_path, avg_results_file_path)
 
-    # Optional: Upload results to Google Cloud Storage
+        print("Processing complete! Check the results in your specified paths.")
+    except Exception as e:
+        print(f"Error running script because: {e}")
+        logging.error(f"Error running script because: {e}")
+
+     # Optional: Upload results to Google Cloud Storage
     try:
         from google.cloud import storage
 
@@ -191,6 +216,7 @@ if __name__ == "__main__":
         upload_to_bucket("average_results.csv", avg_results_file_path, bucket_name)
     except Exception as e:
         print(f"Error uploading to Google Cloud Storage: {e}")
+        logging.error(f"Error uploading to Google Cloud Storage: {e}")
 
     # Stop the VM instance programmatically
     print("Stopping the instance to save costs...")

@@ -9,6 +9,10 @@ from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 from joblib import Parallel, delayed
+import tarfile
+import os
+
+
 
 class ParallelCHoutsideConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
     """
