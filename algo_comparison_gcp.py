@@ -10,7 +10,7 @@ from sklearn.neighbors import LocalOutlierFactor, KNeighborsClassifier
 from sklearn.cluster import KMeans, DBSCAN, MeanShift, SpectralClustering
 from sklearn.mixture import GaussianMixture
 from scipy.io import arff  # for handling .arff files
-from ConvexHullAnomalyDetectorClass import ParallelCHoutsideConvexHullAnomalyDetector
+from ConvexHullAnomalyDetectorClass import ParallelCHoutsideConvexHullAnomalyDetector,ConfigurableConvexHullAnomalyDetector
 import logging
 
 # For convex hull anomaly detection (replace with your custom class import if needed)
@@ -119,6 +119,244 @@ def get_processed_files(results_file_path):
 
 
 
+
+def sensetivity_eval(parent_folder, results_file_path):
+    """
+    Processes each .arff dataset found in 'parent_folder' subdirectories.
+
+    For each dataset, we demonstrate four sweeps:
+      1) Lambda sweep (0..1 by 0.1).
+      2) Row-count sweep (e.g. [100, 500, 1000]).
+      3) Column-partition sweep (fraction=0.25, consecutive column blocks).
+      4) Row-partition sweep (fraction=0.25, consecutive row blocks).
+
+    You can remove whichever sweeps you don't need.
+
+    Prerequisites (already defined in your code):
+      - get_processed_files(results_file_path)
+      - load_arff_dataset(file_path)
+      - split_data(df)
+      - evaluate_models(X, y, models, dataset_name)
+      - save_intermediate_results(results, results_file_path)
+      - ConfigurableConvexHullAnomalyDetector
+
+    Also uses partition_features_by_fraction (for columns) and
+    partition_rows_by_fraction (for rows).
+    """
+
+    processed_files = get_processed_files(results_file_path)
+    all_results = []
+
+    # Example sweeps:
+    lambda_values = np.arange(0.0, 10, 1)  # 0, 0.1, ..., 1.0
+    row_counts = [100, 500, 1000]
+    column_fraction = 0.25
+    row_fraction = 0.25
+
+    # Default lambda for row-count, column-fraction, row-fraction sweeps
+    default_lambda = 0.5
+
+    for folder_name in os.listdir(parent_folder):
+        folder_path = os.path.join(parent_folder, folder_name)
+        if os.path.isdir(folder_path):
+            for file in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, file)
+                # only process .arff not in processed_files
+                if file.endswith('.arff') and file_path not in processed_files:
+                    print(f"Processing file: {file_path}")
+
+                    try:
+                        data = load_arff_dataset(file_path)
+                        X_full, _, y_full, _ = split_data(data)
+                        n_samples, n_features = X_full.shape
+
+                        # =========================================
+                        # SWEEP #1: LAMBDA (all rows & columns)
+                        # =========================================
+                        for lam in lambda_values:
+                            model_name = f"CH_NaivePCA_lam={lam}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=lam
+                                )
+                            }
+                            results = evaluate_models(X_full, y_full, models,
+                                                      dataset_name=f"{file_path}-lam={lam}")
+                            for r in results:
+                                r["SweepType"] = "lambda"
+                                r["Lam"] = lam
+                                r["RowCount"] = n_samples
+                                r["ColCount"] = n_features
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+
+                        # # =========================================
+                        # # SWEEP #2: ROW-COUNT (fixed lambda)
+                        # # =========================================
+                        # for rc in row_counts:
+                        #     actual_rc = min(rc, n_samples)
+                        #     idx = np.random.choice(n_samples, size=actual_rc, replace=False)
+                        #     X_subset = X_full[idx, :]
+                        #     y_subset = y_full[idx]
+                        #
+                        #     model_name = f"CH_NaivePCA_rows={rc}"
+                        #     models = {
+                        #         model_name: ConfigurableConvexHullAnomalyDetector(
+                        #             method="pca",
+                        #             stopping_criteria="naive",
+                        #             n_components=2,
+                        #             lam=default_lambda
+                        #         )
+                        #     }
+                        #     results = evaluate_models(X_subset, y_subset, models,
+                        #                               dataset_name=f"{file_path}-rows={rc}")
+                        #     for r in results:
+                        #         r["SweepType"] = "row_count"
+                        #         r["Lam"] = default_lambda
+                        #         r["RowCount"] = actual_rc
+                        #         r["ColCount"] = n_features
+                        #     save_intermediate_results(results, results_file_path)
+                        #     all_results.extend(results)
+                        #
+                        # # =========================================
+                        # # SWEEP #3: COLUMN PARTITION (fraction=0.25)
+                        # #   consecutive chunk slices of columns
+                        # # =========================================
+                        # partitions = partition_features_by_fraction(
+                        #     n_features, fraction=column_fraction
+                        # )
+                        # # Example: if n_features=9 => fraction=0.25 => 4 slices:
+                        # #   [0,1], [2,3], [4,5], [6,7,8]
+                        # for i, chunk in enumerate(partitions):
+                        #     chosen_cols = chunk
+                        #     X_colsubset = X_full[:, chosen_cols]
+                        #     y_colsubset = y_full
+                        #
+                        #     model_name = f"CH_NaivePCA_colSlice={i}"
+                        #     models = {
+                        #         model_name: ConfigurableConvexHullAnomalyDetector(
+                        #             method="pca",
+                        #             stopping_criteria="naive",
+                        #             n_components=2,
+                        #             lam=default_lambda
+                        #         )
+                        #     }
+                        #     results = evaluate_models(X_colsubset, y_colsubset, models,
+                        #                               dataset_name=f"{file_path}-colSlice={i}")
+                        #     for r in results:
+                        #         r["SweepType"] = "col_partition"
+                        #         r["PartitionIdx"] = i
+                        #         r["Fraction"] = column_fraction
+                        #         r["Lam"] = default_lambda
+                        #         r["RowCount"] = n_samples
+                        #         r["ColCount"] = len(chunk)
+                        #
+                        #     save_intermediate_results(results, results_file_path)
+                        #     all_results.extend(results)
+                        #
+                        # # =========================================
+                        # # SWEEP #4: ROW PARTITION (fraction=0.25)
+                        # #   consecutive chunk slices of rows
+                        # # =========================================
+                        # row_partitions = partition_rows_by_fraction(n_samples, row_fraction)
+                        # # Example: if n_samples=9 => fraction=0.25 => 4 slices:
+                        # #   [0,1], [2,3], [4,5], [6,7,8]
+                        # for i, row_chunk in enumerate(row_partitions):
+                        #     X_rowsubset = X_full[row_chunk, :]
+                        #     y_rowsubset = y_full[row_chunk]
+                        #
+                        #     model_name = f"CH_NaivePCA_rowSlice={i}"
+                        #     models = {
+                        #         model_name: ConfigurableConvexHullAnomalyDetector(
+                        #             method="pca",
+                        #             stopping_criteria="naive",
+                        #             n_components=2,
+                        #             lam=default_lambda
+                        #         )
+                        #     }
+                        #     results = evaluate_models(X_rowsubset, y_rowsubset, models,
+                        #                               dataset_name=f"{file_path}-rowSlice={i}")
+                        #     for r in results:
+                        #         r["SweepType"] = "row_partition"
+                        #         r["PartitionIdx"] = i
+                        #         r["Fraction"] = row_fraction
+                        #         r["Lam"] = default_lambda
+                        #         r["RowCount"] = len(row_chunk)
+                        #         r["ColCount"] = n_features
+                        #
+                        #     save_intermediate_results(results, results_file_path)
+                        #     all_results.extend(results)
+                        #
+                        # print(f"Finished sweeps for: {file_path}")
+
+                    except Exception as e:
+                        print(f"Error processing file {file_path}: {e}")
+                        continue
+
+    return all_results
+
+    #  -- If you haven't defined partition_features_by_fraction somewhere, here's a quick example:
+def partition_features_by_fraction(n_features, fraction=0.25):
+    """
+    Partition 'n_features' consecutive indices into '1/fraction' slices.
+    Each slice has size = floor(fraction * n_features),
+    except the last slice which gets any leftover.
+    """
+    import math
+    lumps = int(round(1.0 / fraction))
+    chunk_size = math.floor(fraction * n_features)
+    if chunk_size < 1:
+        chunk_size = 1
+
+    col_indices = list(range(n_features))
+    partitions = []
+    current_start = 0
+    for i in range(lumps):
+        if i < lumps - 1:
+            end = current_start + chunk_size
+            partitions.append(col_indices[current_start:end])
+            current_start = end
+        else:
+            partitions.append(col_indices[current_start:])
+    return partitions
+
+import math
+
+def partition_rows_by_fraction(n_rows, fraction=0.25):
+    """
+    Partition 'n_rows' consecutive indices into '1/fraction' slices.
+    Each slice has size = floor(fraction * n_rows),
+    except the last slice, which gets any leftover.
+
+    Example:
+      n_rows=9, fraction=0.25 => lumps=4
+      chunk_size = floor(0.25*9)=2
+      => partitions: [0,1], [2,3], [4,5], [6,7,8]
+    """
+
+    lumps = int(round(1.0 / fraction))
+    chunk_size = math.floor(fraction * n_rows)
+    if chunk_size < 1:
+        chunk_size = 1  # ensure at least 1 row
+
+    row_indices = list(range(n_rows))
+    partitions = []
+
+    current_start = 0
+    for i in range(lumps):
+        if i < lumps - 1:
+            end = current_start + chunk_size
+            partitions.append(row_indices[current_start:end])
+            current_start = end
+        else:
+            # last slice => leftover
+            partitions.append(row_indices[current_start:])
+
+    return partitions
+
 # Process datasets
 def process_datasets(parent_folder, results_file_path):
     processed_files = get_processed_files(results_file_path)
@@ -139,16 +377,37 @@ def process_datasets(parent_folder, results_file_path):
                         X, _, y_true, _ = split_data(data)  # Ensure y_true is extracted
 
                         # Define models
+                        # models = {
+                        #     "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
+                        #     "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
+                        #     "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
+                        #     "K-means": KMeans(n_clusters=2, random_state=42),
+                        #     "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
+                        #     "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
+                        #     #"Spectral Clustering": SpectralClustering(n_clusters=2, random_state=42),
+                        #     "Mean Shift": MeanShift(),
+                        #     "Convex Hull": ParallelCHoutsideConvexHullAnomalyDetector(),
+                        # }
+
                         models = {
-                            "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
-                            "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
-                            "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
-                            "K-means": KMeans(n_clusters=2, random_state=42),
-                            "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
-                            "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
-                            #"Spectral Clustering": SpectralClustering(n_clusters=2, random_state=42),
-                            "Mean Shift": MeanShift(),
-                            "Convex Hull": ParallelCHoutsideConvexHullAnomalyDetector(),
+                            "Convex Hull Naive + PCA": ConfigurableConvexHullAnomalyDetector(method="pca",
+                                                                                             stopping_criteria="naive",
+                                                                                             n_components=2),
+                            "Convex Hull Elbow + PCA": ConfigurableConvexHullAnomalyDetector(method="pca",
+                                                                                             stopping_criteria="elbow",
+                                                                                             n_components=2),
+                            "Convex Hull Optimal + PCA": ConfigurableConvexHullAnomalyDetector(method="pca",
+                                                                                               stopping_criteria="optimal",
+                                                                                               n_components=2),
+                            "Convex Hull Naive + t-SNE": ConfigurableConvexHullAnomalyDetector(method="tsne",
+                                                                                               stopping_criteria="naive",
+                                                                                               n_components=2),
+                            "Convex Hull Elbow + t-SNE": ConfigurableConvexHullAnomalyDetector(method="tsne",
+                                                                                               stopping_criteria="elbow",
+                                                                                               n_components=2),
+                            "Convex Hull Optimal + t-SNE": ConfigurableConvexHullAnomalyDetector(method="tsne",
+                                                                                                 stopping_criteria="optimal",
+                                                                                                 n_components=2),
                         }
 
                         # Evaluate models
@@ -224,26 +483,100 @@ def test_run():
         print(f"Aggregated results saved to: {avg_results_file_path}")
 
     return
+
+
+def test_lam_effects():
+    """
+    Demonstrates how different lambda values can lead to different 'Sp' sets
+    and different final hull volumes, using a small 2D dataset.
+    """
+
+    # 1) A small 2D dataset of 10 points
+    X = np.array([
+        [0,0], [1,0], [2,0], [3,0],
+        [0,1], [1.5,0.5], [2,1],
+        [1,2], [2,2], [3,2]
+    ], dtype=float)
+    y = np.zeros(X.shape[0], dtype=int)  # Not really used unless "optimal" stopping
+
+    # We'll import your refactored or original class
+    # (Below, I'm assuming it's named 'ConvexHullAnomalyDetectorLambda')
+    # from your_module import ConvexHullAnomalyDetectorLambda  # example
+
+    # Let's define some lambda values to test:
+    lam_values = [0.0, 0.2, 0.5, 1.0]
+
+    for lam in lam_values:
+        print(f"\n========================")
+        print(f" Testing lambda = {lam}")
+        print(f"========================")
+
+        # 2) Instantiate the detector
+        model = ConfigurableConvexHullAnomalyDetector(
+            method="pca",               # we do PCA(2), though it's already 2D
+            stopping_criteria="naive",  # so we see the effect of lam in naive removal
+            n_components=2,
+            lam=lam,
+            max_iter=50                 # let it try up to 50 removals
+        )
+
+        # 3) Fit
+        model.fit(X, y)  # y not strictly needed for "naive"
+
+        # 4) See how many points remain
+        final_sp = model.Sp  # The set of "surviving" points in reduced space
+        print(f"  Final # of points in Sp: {len(final_sp)}")
+
+        # 5) Let's figure out which points got removed
+        #    We know which survived because model.Sp are the 2D reduced points
+        #    But if we're using PCA(2) on a 2D dataset => effectively the same shape
+        #    We can compare original X_reduced_ vs final Sp
+        survived_points = set(final_sp)         # set of (x, y) in reduced space
+        original_points = set(map(tuple, model.X_reduced_))
+        removed_points  = original_points - survived_points
+
+        # 6) Print removed points
+        if len(removed_points) == 0:
+            print("  No points were removed.")
+        else:
+            print(f"  Removed {len(removed_points)} points:")
+            for pt in removed_points:
+                print(f"    {pt}")
+
+        # 7) Print final hull volume
+        #    If hull_equations_ is None, that means we couldn't build a hull
+        if model.hull_equations_ is None:
+            print("  Final hull_equations_ is None => no hull built.")
+        else:
+            # Let's quickly compute the final volume for clarity
+            arr_sp = np.array(list(model.Sp))
+            if arr_sp.shape[0] >= 3:  # at least 3 points for a 2D hull
+                from scipy.spatial import ConvexHull
+                final_hull = ConvexHull(arr_sp)
+                print(f"  Final hull volume: {final_hull.volume:.4f}")
+            else:
+                print("  Final hull: Not enough points to measure volume > 0.")
+
 if __name__ == "__main__":
 
     #test_run()
-
-
+    #test_lam_effects()
+    #print()
 
     try :
 
         # datasets_folder  = f"{path}/datasets"  # Update with your VM path
-        # results_file_path = f"{path}/results_per_dataset.csv"
-        # avg_results_file_path = f"{path}/average_results.csv"
+        # results_file_path = f"{path}/results_per_dataset_sensetivity.csv"
+        # avg_results_file_path = f"{path}/average_results_sensetivity.csv"
 
-        datasets_folder = datasets_folder = "/home/convexhull1/literature"  # Update with your VM path
-        results_file_path = "/home/convexhull1/results_per_dataset.csv"
-        avg_results_file_path = "/home/convexhull1/average_results.csv"
+        datasets_folder = "/home/convexhull1/literature"  # Update with your VM path
+        results_file_path = "/home/convexhull1/results_per_dataset_lambda.csv"
+        avg_results_file_path = "/home/convexhull1/average_results_lambda.csv"
 
         # Process datasets and save intermediate results
         print(f"Processing datasets in: {datasets_folder}")
         logging.info(f"Processing datasets in: {datasets_folder}")
-        process_datasets(datasets_folder, results_file_path)
+        sensetivity_eval(datasets_folder, results_file_path)
 
         print("finished running models")
         logging.info("finished running models")
