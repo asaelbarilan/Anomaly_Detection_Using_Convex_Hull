@@ -16,7 +16,7 @@ import logging
 # For convex hull anomaly detection (replace with your custom class import if needed)
 
 #path="C:/Users/Asael/PycharmProjects/convexhull"
-path='/home/convexhull1'
+path='/home/someliejonson'
 # Dimensionality reduction
 from sklearn.decomposition import PCA
 logging.basicConfig(
@@ -47,7 +47,7 @@ def split_data(data):
 
     X = data[feature_columns].values
     y = data[label_column].values
-    return train_test_split(X, y, test_size=0.2, random_state=42)
+    return X,y
 
 
 # Evaluate models
@@ -125,7 +125,7 @@ def sensetivity_eval(parent_folder, results_file_path):
     Processes each .arff dataset found in 'parent_folder' subdirectories.
 
     For each dataset, we demonstrate four sweeps:
-      1) Lambda sweep (0..1 by 0.1).
+      1) Lambda sweep (0..10 by 0.1).
       2) Row-count sweep (e.g. [100, 500, 1000]).
       3) Column-partition sweep (fraction=0.25, consecutive column blocks).
       4) Row-partition sweep (fraction=0.25, consecutive row blocks).
@@ -174,7 +174,7 @@ def sensetivity_eval(parent_folder, results_file_path):
                         # SWEEP #1: LAMBDA (all rows & columns)
                         # =========================================
                         for lam in lambda_values:
-                            model_name = f"CH_NaivePCA_lam={lam}"
+                            model_name = f"CH_elbowPCA_lam={lam}"
                             models = {
                                 model_name: ConfigurableConvexHullAnomalyDetector(
                                     method="pca",
@@ -188,109 +188,109 @@ def sensetivity_eval(parent_folder, results_file_path):
                             for r in results:
                                 r["SweepType"] = "lambda"
                                 r["Lam"] = lam
-                                r["RowCount"] = n_samples
-                                r["ColCount"] = n_features
+                                # r["RowCount"] = n_samples
+                                # r["ColCount"] = n_features
                             save_intermediate_results(results, results_file_path)
                             all_results.extend(results)
 
-                        # # =========================================
-                        # # SWEEP #2: ROW-COUNT (fixed lambda)
-                        # # =========================================
-                        # for rc in row_counts:
-                        #     actual_rc = min(rc, n_samples)
-                        #     idx = np.random.choice(n_samples, size=actual_rc, replace=False)
-                        #     X_subset = X_full[idx, :]
-                        #     y_subset = y_full[idx]
-                        #
-                        #     model_name = f"CH_NaivePCA_rows={rc}"
-                        #     models = {
-                        #         model_name: ConfigurableConvexHullAnomalyDetector(
-                        #             method="pca",
-                        #             stopping_criteria="naive",
-                        #             n_components=2,
-                        #             lam=default_lambda
-                        #         )
-                        #     }
-                        #     results = evaluate_models(X_subset, y_subset, models,
-                        #                               dataset_name=f"{file_path}-rows={rc}")
-                        #     for r in results:
-                        #         r["SweepType"] = "row_count"
-                        #         r["Lam"] = default_lambda
-                        #         r["RowCount"] = actual_rc
-                        #         r["ColCount"] = n_features
-                        #     save_intermediate_results(results, results_file_path)
-                        #     all_results.extend(results)
-                        #
-                        # # =========================================
-                        # # SWEEP #3: COLUMN PARTITION (fraction=0.25)
-                        # #   consecutive chunk slices of columns
-                        # # =========================================
-                        # partitions = partition_features_by_fraction(
-                        #     n_features, fraction=column_fraction
-                        # )
-                        # # Example: if n_features=9 => fraction=0.25 => 4 slices:
-                        # #   [0,1], [2,3], [4,5], [6,7,8]
-                        # for i, chunk in enumerate(partitions):
-                        #     chosen_cols = chunk
-                        #     X_colsubset = X_full[:, chosen_cols]
-                        #     y_colsubset = y_full
-                        #
-                        #     model_name = f"CH_NaivePCA_colSlice={i}"
-                        #     models = {
-                        #         model_name: ConfigurableConvexHullAnomalyDetector(
-                        #             method="pca",
-                        #             stopping_criteria="naive",
-                        #             n_components=2,
-                        #             lam=default_lambda
-                        #         )
-                        #     }
-                        #     results = evaluate_models(X_colsubset, y_colsubset, models,
-                        #                               dataset_name=f"{file_path}-colSlice={i}")
-                        #     for r in results:
-                        #         r["SweepType"] = "col_partition"
-                        #         r["PartitionIdx"] = i
-                        #         r["Fraction"] = column_fraction
-                        #         r["Lam"] = default_lambda
-                        #         r["RowCount"] = n_samples
-                        #         r["ColCount"] = len(chunk)
-                        #
-                        #     save_intermediate_results(results, results_file_path)
-                        #     all_results.extend(results)
-                        #
-                        # # =========================================
-                        # # SWEEP #4: ROW PARTITION (fraction=0.25)
-                        # #   consecutive chunk slices of rows
-                        # # =========================================
-                        # row_partitions = partition_rows_by_fraction(n_samples, row_fraction)
-                        # # Example: if n_samples=9 => fraction=0.25 => 4 slices:
-                        # #   [0,1], [2,3], [4,5], [6,7,8]
-                        # for i, row_chunk in enumerate(row_partitions):
-                        #     X_rowsubset = X_full[row_chunk, :]
-                        #     y_rowsubset = y_full[row_chunk]
-                        #
-                        #     model_name = f"CH_NaivePCA_rowSlice={i}"
-                        #     models = {
-                        #         model_name: ConfigurableConvexHullAnomalyDetector(
-                        #             method="pca",
-                        #             stopping_criteria="naive",
-                        #             n_components=2,
-                        #             lam=default_lambda
-                        #         )
-                        #     }
-                        #     results = evaluate_models(X_rowsubset, y_rowsubset, models,
-                        #                               dataset_name=f"{file_path}-rowSlice={i}")
-                        #     for r in results:
-                        #         r["SweepType"] = "row_partition"
-                        #         r["PartitionIdx"] = i
-                        #         r["Fraction"] = row_fraction
-                        #         r["Lam"] = default_lambda
-                        #         r["RowCount"] = len(row_chunk)
-                        #         r["ColCount"] = n_features
-                        #
-                        #     save_intermediate_results(results, results_file_path)
-                        #     all_results.extend(results)
-                        #
-                        # print(f"Finished sweeps for: {file_path}")
+                        # =========================================
+                        # SWEEP #2: ROW-COUNT (fixed lambda)
+                        # =========================================
+                        for rc in row_counts:
+                            actual_rc = min(rc, n_samples)
+                            idx = np.random.choice(n_samples, size=actual_rc, replace=False)
+                            X_subset = X_full[idx, :]
+                            y_subset = y_full[idx]
+
+                            model_name = f"CH_elbowPCA_rows={rc}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=default_lambda
+                                )
+                            }
+                            results = evaluate_models(X_subset, y_subset, models,
+                                                      dataset_name=f"{file_path}-rows={rc}")
+                            for r in results:
+                                r["SweepType"] = "row_count"
+                                r["Lam"] = default_lambda
+                                # r["RowCount"] = actual_rc
+                                # r["ColCount"] = n_features
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+
+                        # =========================================
+                        # SWEEP #3: COLUMN PARTITION (fraction=0.25)
+                        #   consecutive chunk slices of columns
+                        # =========================================
+                        partitions = partition_features_by_fraction(
+                            n_features, fraction=column_fraction
+                        )
+                        # Example: if n_features=9 => fraction=0.25 => 4 slices:
+                        #   [0,1], [2,3], [4,5], [6,7,8]
+                        for i, chunk in enumerate(partitions):
+                            chosen_cols = chunk
+                            X_colsubset = X_full[:, chosen_cols]
+                            y_colsubset = y_full
+
+                            model_name = f"CH_elbowPCA_colSlice={i}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=default_lambda
+                                )
+                            }
+                            results = evaluate_models(X_colsubset, y_colsubset, models,
+                                                      dataset_name=f"{file_path}-colSlice={i}")
+                            for r in results:
+                                r["SweepType"] = "col_partition"
+                                # r["PartitionIdx"] = i
+                                # r["Fraction"] = column_fraction
+                                r["Lam"] = default_lambda
+                                # r["RowCount"] = n_samples
+                                # r["ColCount"] = len(chunk)
+
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+
+                        # =========================================
+                        # SWEEP #4: ROW PARTITION (fraction=0.25)
+                        #   consecutive chunk slices of rows
+                        # =========================================
+                        row_partitions = partition_rows_by_fraction(n_samples, row_fraction)
+                        # Example: if n_samples=9 => fraction=0.25 => 4 slices:
+                        #   [0,1], [2,3], [4,5], [6,7,8]
+                        for i, row_chunk in enumerate(row_partitions):
+                            X_rowsubset = X_full[row_chunk, :]
+                            y_rowsubset = y_full[row_chunk]
+
+                            model_name = f"CH_elbowPCA_rowSlice={i}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=default_lambda
+                                )
+                            }
+                            results = evaluate_models(X_rowsubset, y_rowsubset, models,
+                                                      dataset_name=f"{file_path}-rowSlice={i}")
+                            for r in results:
+                                r["SweepType"] = "row_partition"
+                                # r["PartitionIdx"] = i
+                                # r["Fraction"] = row_fraction
+                                r["Lam"] = default_lambda
+                                # r["RowCount"] = len(row_chunk)
+                                # r["ColCount"] = n_features
+
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+
+                        print(f"Finished sweeps for: {file_path}")
 
                     except Exception as e:
                         print(f"Error processing file {file_path}: {e}")
@@ -298,6 +298,201 @@ def sensetivity_eval(parent_folder, results_file_path):
 
     return all_results
 
+# -------------- New Helper for Unique Dataset Names --------------
+import os
+
+def make_dataset_sweep_name(file_path, sweep_type, sweep_value):
+    """
+    Creates a unique name for each (file, sweep_type, value), e.g.:
+      file_path = "/home/.../mydata.arff"
+      sweep_type = "lam"
+      sweep_value = 3
+    => "mydata-lam=3"
+
+    This is what we'll store in the 'Dataset' column,
+    so that we can skip re-processing if it already exists.
+    """
+    base_name = os.path.splitext(os.path.basename(file_path))[0]
+    return f"{base_name}-{sweep_type}={sweep_value}"
+
+# -------------- Fixed sensetivity_eval Function --------------
+def sensetivity_eval_2(parent_folder, results_file_path):
+    """
+    Processes each .arff dataset in 'parent_folder' subdirectories.
+
+    Sweeps:
+      1) Lambda sweep: lam in [1..10, step=1].
+      2) Row-count sweep: row_counts = [100, 500, 1000].
+      3) Column-partition sweep (fraction=0.25).
+      4) Row-partition sweep (fraction=0.25).
+
+    Changes from original code:
+      - lambda range changed to 'range(1, 11)'
+      - each sweep now uses a unique dataset name (via 'make_dataset_sweep_name'),
+        so we can check 'if sweep_dataset_name in processed_files' to skip duplicates.
+      - added more logging calls to help debug and follow progress.
+    """
+    processed_files = get_processed_files(results_file_path)
+    all_results = []
+
+    # SWEEP parameters
+    lambda_values = range(1, 11)  # now 1..10 inclusive
+    row_counts = [100, 500, 1000]
+    column_fraction = 0.25
+    row_fraction = 0.25
+    default_lambda = 0.5
+
+    for folder_name in os.listdir(parent_folder):
+        folder_path = os.path.join(parent_folder, folder_name)
+        if os.path.isdir(folder_path):
+            for file in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, file)
+                # Only proceed if .arff
+                if file.endswith('.arff'):
+                    logging.info(f"Starting sensitivity sweeps for file: {file_path}")
+                    try:
+                        data = load_arff_dataset(file_path)
+                        X_full , y_full  = split_data(data)
+                        n_samples, n_features = X_full.shape
+
+                        # =======================
+                        # 1) Lambda Sweep
+                        # =======================
+                        for lam in lambda_values:
+                            # Construct a unique name for the CSV
+                            sweep_dataset_name = make_dataset_sweep_name(file_path, "lam", lam)
+                            if sweep_dataset_name in processed_files:
+                                logging.info(f"Skipping already-processed lam sweep: {sweep_dataset_name}")
+                                continue
+
+                            model_name = f"CH_elbowPCA_lam={lam}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=lam
+                                )
+                            }
+                            results = evaluate_models(X_full, y_full, models, dataset_name=sweep_dataset_name)
+                            for r in results:
+                                r["SweepType"] = "lambda"
+                                r["Lam"] = lam
+
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+                            processed_files.add(sweep_dataset_name)  # mark done
+
+                        # =======================
+                        # 2) Row-Count Sweep
+                        # =======================
+                        for rc in row_counts:
+                            sweep_dataset_name = make_dataset_sweep_name(file_path, "rows", rc)
+                            if sweep_dataset_name in processed_files:
+                                logging.info(f"Skipping already-processed row_count sweep: {sweep_dataset_name}")
+                                continue
+
+                            actual_rc = min(rc, n_samples)
+                            idx = np.random.choice(n_samples, size=actual_rc, replace=False)
+                            X_subset = X_full[idx, :]
+                            y_subset = y_full[idx]
+
+                            model_name = f"CH_elbowPCA_rows={rc}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=default_lambda
+                                )
+                            }
+                            results = evaluate_models(X_subset, y_subset, models, dataset_name=sweep_dataset_name)
+                            for r in results:
+                                r["SweepType"] = "row_count"
+                                r["Lam"] = default_lambda
+                                r["RowCount"] = actual_rc
+
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+                            processed_files.add(sweep_dataset_name)  # mark done
+
+                        # =======================
+                        # 3) Column Partition
+                        # =======================
+                        partitions = partition_features_by_fraction(n_features, fraction=column_fraction)
+                        for i, chunk in enumerate(partitions):
+                            sweep_dataset_name = make_dataset_sweep_name(file_path, "colSlice", i)
+                            if sweep_dataset_name in processed_files:
+                                logging.info(
+                                    f"Skipping already-processed col_partition sweep: {sweep_dataset_name}")
+                                continue
+
+                            X_colsubset = X_full[:, chunk]
+                            y_colsubset = y_full
+
+                            model_name = f"CH_elbowPCA_colSlice={i}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=default_lambda
+                                )
+                            }
+                            results = evaluate_models(X_colsubset, y_colsubset, models,
+                                                      dataset_name=sweep_dataset_name)
+                            for r in results:
+                                r["SweepType"] = "col_partition"
+                                r["Lam"] = default_lambda
+                                r["PartitionIdx"] = i
+                                r["ColCount"] = len(chunk)
+
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+                            processed_files.add(sweep_dataset_name)
+
+                        # =======================
+                        # 4) Row Partition
+                        # =======================
+                        row_partitions = partition_rows_by_fraction(n_samples, row_fraction)
+                        for i, row_chunk in enumerate(row_partitions):
+                            sweep_dataset_name = make_dataset_sweep_name(file_path, "rowSlice", i)
+                            if sweep_dataset_name in processed_files:
+                                logging.info(
+                                    f"Skipping already-processed row_partition sweep: {sweep_dataset_name}")
+                                continue
+
+                            X_rowsubset = X_full[row_chunk, :]
+                            y_rowsubset = y_full[row_chunk]
+
+                            model_name = f"CH_elbowPCA_rowSlice={i}"
+                            models = {
+                                model_name: ConfigurableConvexHullAnomalyDetector(
+                                    method="pca",
+                                    stopping_criteria="elbow",
+                                    n_components=2,
+                                    lam=default_lambda
+                                )
+                            }
+                            results = evaluate_models(X_rowsubset, y_rowsubset, models,
+                                                      dataset_name=sweep_dataset_name)
+                            for r in results:
+                                r["SweepType"] = "row_partition"
+                                r["Lam"] = default_lambda
+                                r["PartitionIdx"] = i
+                                r["RowCount"] = len(row_chunk)
+
+                            save_intermediate_results(results, results_file_path)
+                            all_results.extend(results)
+                            processed_files.add(sweep_dataset_name)
+
+                        logging.info(f"Finished all sweeps for file: {file_path}")
+
+                    except Exception as e:
+                        logging.error(f"Error processing file {file_path}: {e}")
+                        continue
+
+    return all_results
     #  -- If you haven't defined partition_features_by_fraction somewhere, here's a quick example:
 def partition_features_by_fraction(n_features, fraction=0.25):
     """
@@ -377,19 +572,16 @@ def process_datasets(parent_folder, results_file_path):
                         X, _, y_true, _ = split_data(data)  # Ensure y_true is extracted
 
                         # Define models
-                        # models = {
-                        #     "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
-                        #     "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
-                        #     "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
-                        #     "K-means": KMeans(n_clusters=2, random_state=42),
-                        #     "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
-                        #     "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
-                        #     #"Spectral Clustering": SpectralClustering(n_clusters=2, random_state=42),
-                        #     "Mean Shift": MeanShift(),
-                        #     "Convex Hull": ParallelCHoutsideConvexHullAnomalyDetector(),
-                        # }
-
                         models = {
+                            "Isolation Forest": IsolationForest(contamination=0.1, random_state=42),
+                            "One-Class SVM": OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1),
+                            "Gaussian Mixture Models": GaussianMixture(n_components=2, covariance_type="full"),
+                            "K-means": KMeans(n_clusters=2, random_state=42),
+                            "Local Outlier Factor": LocalOutlierFactor(n_neighbors=20, contamination=0.1),
+                            "DBSCAN": DBSCAN(eps=0.5, min_samples=5),
+                            #"Spectral Clustering": SpectralClustering(n_clusters=2, random_state=42),
+                            "Mean Shift": MeanShift(),
+
                             "Convex Hull Naive + PCA": ConfigurableConvexHullAnomalyDetector(method="pca",
                                                                                              stopping_criteria="naive",
                                                                                              n_components=2),
@@ -569,14 +761,14 @@ if __name__ == "__main__":
         # results_file_path = f"{path}/results_per_dataset_sensetivity.csv"
         # avg_results_file_path = f"{path}/average_results_sensetivity.csv"
 
-        datasets_folder = "/home/convexhull1/literature"  # Update with your VM path
-        results_file_path = "/home/convexhull1/results_per_dataset_lambda.csv"
-        avg_results_file_path = "/home/convexhull1/average_results_lambda.csv"
+        datasets_folder =f"{path}/literature"  # Update with your VM path
+        results_file_path = f"{path}/results_per_dataset_sensativity_nomaxiter.csv"
+        avg_results_file_path = f"{path}/average_results_sensativity_nomaxiter.csv"
 
         # Process datasets and save intermediate results
         print(f"Processing datasets in: {datasets_folder}")
         logging.info(f"Processing datasets in: {datasets_folder}")
-        sensetivity_eval(datasets_folder, results_file_path)
+        sensetivity_eval_2(datasets_folder, results_file_path)
 
         print("finished running models")
         logging.info("finished running models")

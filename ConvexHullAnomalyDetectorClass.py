@@ -185,7 +185,8 @@ class ConfigurableConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
           - Check stopping_criteria
         Returns the final Sp.
         """
-        for iteration in range(self.max_iter):
+        count=0
+        while True:
             Sp_array = np.array(list(Sp))
             if len(Sp_array) < self.n_components + 1:
                 break  # not enough points for hull
@@ -231,11 +232,12 @@ class ConfigurableConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
                 Sp=Sp,
                 improved=improved,
                 current_score=current_score,
-                prev_volume=prev_volume
+                prev_volume=prev_volume,
+                count=count
             )
             if stop:
                 break
-
+            count+=1
             # If "elbow", update prev_volume
             if self.stopping_criteria == "elbow" and prev_volume is not None:
                 new_vol = self._try_convex_hull_volume(Sp)
@@ -248,14 +250,14 @@ class ConfigurableConvexHullAnomalyDetector(BaseEstimator, OutlierMixin):
         else:
             return Sp
 
-    def _apply_stopping_criteria(self, Sp, improved, current_score, prev_volume):
+    def _apply_stopping_criteria(self, Sp, improved, current_score, prev_volume,count):
         """
         Check if we should stop based on self.stopping_criteria.
         Return True if we should stop, False otherwise.
         """
         if self.stopping_criteria == "naive":
             # If no improvement => stop
-            if not improved:
+            if count==self.max_iter:
                 return True
 
         elif self.stopping_criteria == "elbow":

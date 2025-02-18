@@ -227,8 +227,10 @@ def aggregate_results(results_file_path, output_file_path):
 def aggregate_results_for_subset(
     results_file_path,
     output_file_path,
-    dataset_subset=["KDDCup99", "WPBC", "Waveform"]
+    dataset_subset=["PenDigits", "Lymphography", "WBC","Waveform"]
 ):
+
+
     """
     Aggregates results by 'Algorithm' but only for the datasets in 'dataset_subset'.
     Expects a 'Dataset' column in the CSV that includes the dataset path/folder.
@@ -276,31 +278,31 @@ def aggregate_results_for_subset(
 
 # Entry point
 if __name__ == "__main__":
-    # #File paths
+    #File paths
     # datasets_folder = "./literature"
-    # results_file_path = "./results_per_datasetfinal.csv"
+    # results_file_path = "./results_per_dataset_nomaxiter.csv"
     # output_dataset_aggregation_path = "./dataset_aggregated_results.csv"
-    #
-    # # Process datasets
-    # print(f"Processing datasets in: {datasets_folder}")
-    # #process_datasets(datasets_folder, results_file_path)
-    #
-    # # Aggregate results per dataset
-    # #aggregate_per_dataset(results_file_path, output_dataset_aggregation_path)
-    #
-    # # Example usage:
-    # input_csv_path = "results_per_datasetfinal.csv"  # Replace with your input file path
-    # output_csv_path = "best_algorithms_per_dataset_with_naives.csv"  # Replace with your desired output file path
+
+    # Process datasets
+    #print(f"Processing datasets in: {datasets_folder}")
+    #process_datasets(datasets_folder, results_file_path)
+
+    # Aggregate results per dataset
+    #aggregate_per_dataset(results_file_path, output_dataset_aggregation_path)
+
+    # Example usage:
+    # input_csv_path = "results_per_dataset_nomaxiter.csv"  # Replace with your input file path
+    # output_csv_path = "best_algorithms_per_dataset_nomaxiter.csv"  # Replace with your desired output file path
     # metric = "F1 Score"  # You can choose Accuracy, F1 Score, or any other metric
     #
     # find_best_algorithm_per_dataset(input_csv_path, output_csv_path, metric)
 
 
-
+    #average_results_ PER subset
     path = "C:/Users/Asael/PycharmProjects/convexhull"
     datasets_folder  = f"{path}/datasets"  # Update with your VM path
     results_file_path = f"{path}/results_per_datasetfinal.csv"
-    avg_results_file_path = f"{path}/average_results_subset.csv"
+    avg_results_file_path = f"{path}/average_results_subset_nomaxiter.csv"
 
 
 
